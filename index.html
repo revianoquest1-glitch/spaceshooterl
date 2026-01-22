@@ -13,17 +13,34 @@
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     }
     body {
-      background: #121212;
+      background: #87CEEB; /* Langit biru cerah */
       display: flex;
       justify-content: center;
       align-items: center;
       height: 100vh;
-      overflow: hidden;
       color: white;
+    }
+    body.no-scroll {
+      overflow: hidden;
     }
     #gameCanvas {
       display: block;
-      background: #000;
+      background: transparent; /* Agar awan terlihat */
+    }
+
+    /* Cegah copy teks di tombol */
+    button {
+      -webkit-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
+      user-select: none;
+      cursor: pointer;
+    }
+    input {
+      -webkit-user-select: text;
+      -moz-user-select: text;
+      -ms-user-select: text;
+      user-select: text;
     }
 
     /* Settings Button */
@@ -123,6 +140,7 @@
       z-index: 20;
       padding: 20px;
       text-align: center;
+      overflow-y: auto;
     }
     .modal h1 {
       font-size: 38px;
@@ -151,7 +169,6 @@
       color: white;
       border: none;
       border-radius: 50px;
-      cursor: pointer;
       transition: all 0.2s;
       margin: 6px;
       box-shadow: 0 4px 8px rgba(0,0,0,0.3);
@@ -167,6 +184,7 @@
       overflow-y: auto;
       margin: 20px 0;
       padding-right: 10px;
+      -webkit-overflow-scrolling: touch;
     }
     .lb-item {
       display: flex;
@@ -192,6 +210,7 @@
       font-size: 18px;
       font-weight: bold;
       z-index: 5;
+      text-shadow: 1px 1px 2px rgba(0,0,0,0.7);
     }
     #score { left: 65px; color: #4CAF50; }
     #wave { right: 20px; color: #2196F3; }
@@ -215,7 +234,7 @@
       left: 0;
       width: 100%;
       height: 100%;
-      background: rgba(0, 0, 0, 0);
+      background: rgba(135, 206, 235, 0.7); /* Biru transparan */
       display: flex;
       justify-content: center;
       align-items: center;
@@ -368,6 +387,17 @@
     let survivalTime = 0;
     let pauseTime = 0;
 
+    // === AWAN ===
+    const clouds = [];
+    for (let i = 0; i < 3; i++) {
+      clouds.push({
+        x: -100 - Math.random() * 200,
+        y: 50 + Math.random() * 150,
+        speed: 0.2 + Math.random() * 0.3,
+        size: 30 + Math.random() * 20
+      });
+    }
+
     // === DOM ===
     const settingsBtn = document.getElementById('settingsBtn');
     const settingsPanel = document.getElementById('settingsPanel');
@@ -465,11 +495,9 @@
     }
     function playBossSpawn() { playSound(() => playTone(200, 0.5, 'sawtooth', 0.2)); }
 
-    // === LEADERBOARD (PERBAIKAN: SATU ENTRI PER PEMAIN) ===
+    // === LEADERBOARD ===
     function loadLeaderboard() {
       leaderboardList.innerHTML = '<div>Loading...</div>';
-      
-      // Ambil SEMUA data dari /scores
       const scoresRef = database.ref('scores');
       scoresRef.once('value', (snapshot) => {
         const scores = [];
@@ -479,21 +507,16 @@
             scores.push(val);
           }
         });
-
-        // Sort descending by score, then by time
         scores.sort((a, b) => {
           if (b.score !== a.score) return b.score - a.score;
           return (b.time || 0) - (a.time || 0);
         });
-
         const top10 = scores.slice(0, 10);
-
         leaderboardList.innerHTML = '';
         if (top10.length === 0) {
           leaderboardList.innerHTML = '<div>No heroes yet</div>';
           return;
         }
-
         top10.forEach((entry, i) => {
           const rankColor = i === 0 ? '#FFD700' : (i === 1 ? '#C0C0C0' : (i === 2 ? '#CD7F32' : '#aaa'));
           const timeStr = formatTime(entry.time || 0);
@@ -513,16 +536,13 @@
       });
     }
 
-    // === SIMPAN SKOR TERBAIK PER PEMAIN ===
     function saveBestScore(name, score, wave, time) {
       if (!name.trim()) return;
-      const cleanName = name.trim().replace(/\s+/g, '_').substring(0, 20); // aman untuk key Firebase
-
+      const cleanName = name.trim().replace(/\s+/g, '_').substring(0, 20);
       const userRef = database.ref('scores/' + cleanName);
       userRef.once('value', (snapshot) => {
         const existing = snapshot.val();
         if (!existing || score > existing.score) {
-          // Simpan hanya jika skor lebih baik
           userRef.set({
             name: name,
             score: score,
@@ -540,6 +560,14 @@
       return `${mins}:${secs}`;
     }
 
+    // === SCROLL CONTROL ===
+    function enableBodyScroll() {
+      document.body.classList.remove('no-scroll');
+    }
+    function disableBodyScroll() {
+      document.body.classList.add('no-scroll');
+    }
+
     // === MODAL HANDLERS ===
     function pauseGame() {
       if (!gameRunning || gamePaused) return;
@@ -548,7 +576,6 @@
       stopBGM();
       settingsPanel.style.display = 'block';
     }
-
     function resumeGame() {
       if (!gamePaused) return;
       gamePaused = false;
@@ -556,6 +583,7 @@
       startTime += (Date.now() - pauseTime);
       if (settings.music) startBGM();
       requestAnimationFrame(gameLoop);
+      disableBodyScroll();
     }
 
     settingsBtn.addEventListener('click', pauseGame);
@@ -584,23 +612,27 @@
     showLeaderboardBtn.addEventListener('click', () => {
       usernameModal.style.display = 'none';
       leaderboardModal.style.display = 'flex';
+      enableBodyScroll();
       loadLeaderboard();
     });
 
     backToStart.addEventListener('click', () => {
       leaderboardModal.style.display = 'none';
       usernameModal.style.display = 'flex';
+      disableBodyScroll();
     });
 
     leaderboardFromGameOver.addEventListener('click', () => {
       gameOverScreen.style.display = 'none';
       leaderboardModal.style.display = 'flex';
+      enableBodyScroll();
       loadLeaderboard();
     });
 
     restartBtn.addEventListener('click', () => {
       gameOverScreen.style.display = 'none';
       usernameModal.style.display = 'flex';
+      disableBodyScroll();
     });
 
     // === GAME UTILS ===
@@ -608,16 +640,13 @@
       if (player.x < 0) player.x = 0;
       if (player.x > GAME_WIDTH - player.width) player.x = GAME_WIDTH - player.width;
     }
-
     function rectCollision(a, b) {
       return a.x < b.x + b.w && a.x + a.width > b.x && a.y < b.y + b.h && a.y + a.height > b.y;
     }
-
     function drawRect(x, y, w, h, color) {
       ctx.fillStyle = color;
       ctx.fillRect(x, y, w, h);
     }
-
     function drawTriangle(x, y, size, color) {
       ctx.fillStyle = color;
       ctx.beginPath();
@@ -627,21 +656,18 @@
       ctx.closePath();
       ctx.fill();
     }
-
     function drawCircle(x, y, r, color) {
       ctx.fillStyle = color;
       ctx.beginPath();
       ctx.arc(x, y, r, 0, Math.PI * 2);
       ctx.fill();
     }
-
     function drawHealthBar(x, y, w, h, current, max, color) {
       ctx.fillStyle = '#333';
       ctx.fillRect(x, y, w, h);
       ctx.fillStyle = color;
       ctx.fillRect(x, y, (current / max) * w, h);
     }
-
     function createExplosion(x, y, color, count = 8) {
       playExplosion();
       for (let i = 0; i < count; i++) {
@@ -667,13 +693,11 @@
         waveText.textContent = `WAVE ${newWave}`;
         waveText.style.opacity = '0';
         waveText.style.transform = 'scale(0.5)';
-        
         setTimeout(() => {
           waveText.style.transition = 'opacity 0.3s, transform 0.3s';
           waveText.style.opacity = '1';
           waveText.style.transform = 'scale(1)';
         }, 300);
-
         setTimeout(() => {
           waveText.style.opacity = '0';
           waveText.style.transform = 'scale(0.5)';
@@ -768,6 +792,7 @@
           font-size: 16px;
           color: #FFEB3B;
           z-index: 5;
+          text-shadow: 1px 1px 2px rgba(0,0,0,0.7);
         `;
         el.textContent = text;
         document.body.appendChild(el);
@@ -781,7 +806,6 @@
       const elapsed = now - lastShotTime;
       const remaining = Math.max(0, cooldown - elapsed);
       const percent = 1 - (remaining / cooldown);
-
       if (percent < 1) {
         reloadIndicator.innerHTML = `
           <svg width="40" height="40">
@@ -802,7 +826,6 @@
       const now = Date.now();
       const cooldown = 400 + (wave * 20);
       if (now - lastShotTime < cooldown) return;
-
       let targets = enemies.filter(enemy => 
         enemy.y < player.y && Math.abs((enemy.x + enemy.w / 2) - (player.x + player.width / 2)) <= 50
       );
@@ -831,13 +854,11 @@
       finalWaveEl.textContent = `Wave: ${wave}`;
       finalTimeEl.textContent = `Time: ${formatTime(survivalTime)}`;
       highScoreLocalEl.textContent = `High Score: ${highScoreLocal}`;
-      
       if (score > highScoreLocal) {
         highScoreLocal = score;
         localStorage.setItem('shooterHighScore', highScoreLocal);
         highScoreLocalEl.textContent = `High Score: ${highScoreLocal}`;
       }
-      
       saveBestScore(playerName, score, wave, survivalTime);
       gameOverScreen.style.display = 'flex';
     }
@@ -861,6 +882,28 @@
     });
     canvas.addEventListener('touchend', () => isDragging = false);
 
+    // === GAMBAR AWAN ===
+    function drawClouds() {
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+      clouds.forEach(cloud => {
+        ctx.beginPath();
+        ctx.arc(cloud.x, cloud.y, cloud.size, 0, Math.PI * 2);
+        ctx.arc(cloud.x + cloud.size * 0.8, cloud.y - cloud.size * 0.2, cloud.size * 0.8, 0, Math.PI * 2);
+        ctx.arc(cloud.x + cloud.size * 1.5, cloud.y, cloud.size * 0.9, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+
+    function updateClouds() {
+      clouds.forEach(cloud => {
+        cloud.x += cloud.speed;
+        if (cloud.x > GAME_WIDTH + 100) {
+          cloud.x = -100;
+          cloud.y = 50 + Math.random() * 150;
+        }
+      });
+    }
+
     // === START GAME ===
     function startGame() {
       if (audioContext.state === 'suspended') {
@@ -874,6 +917,7 @@
       survivalTime = 0;
       gameRunning = true;
       gamePaused = false;
+      disableBodyScroll();
       updateHUD();
       requestAnimationFrame(gameLoop);
     }
@@ -892,7 +936,13 @@
     async function gameLoop(timestamp) {
       if (!gameRunning || gamePaused) return;
 
-      ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+      // Gambar background langit
+      ctx.fillStyle = '#87CEEB';
+      ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+      
+      // Gambar awan
+      updateClouds();
+      drawClouds();
 
       if (doubleShot && timestamp > doubleShotTimer) doubleShot = false;
       if (player.shield && timestamp > player.shieldTimer) player.shield = false;
