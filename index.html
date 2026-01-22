@@ -465,21 +465,38 @@
     }
     function playBossSpawn() { playSound(() => playTone(200, 0.5, 'sawtooth', 0.2)); }
 
-    // === LEADERBOARD (HANYA 10 PEMAIN) ===
+    // === LEADERBOARD (PERBAIKAN UTAMA) ===
     function loadLeaderboard() {
       leaderboardList.innerHTML = '<div>Loading...</div>';
-      // Ambil 10 skor tertinggi
-      const scoresRef = database.ref('scores').orderByChild('score').limitToLast(10);
+      
+      // Ambil 50 entri terakhir (lebih aman), lalu sort manual
+      const scoresRef = database.ref('scores').limitToLast(50);
       scoresRef.once('value', (snapshot) => {
         const scores = [];
-        snapshot.forEach(child => scores.push(child.val()));
-        scores.sort((a, b) => b.score - a.score); // descending
+        snapshot.forEach(child => {
+          const val = child.val();
+          // Pastikan data valid
+          if (val && typeof val.score === 'number' && val.name) {
+            scores.push(val);
+          }
+        });
+
+        // Sort descending by score, then by time (survival time longer = better)
+        scores.sort((a, b) => {
+          if (b.score !== a.score) return b.score - a.score;
+          return (b.time || 0) - (a.time || 0); // lebih lama = lebih baik
+        });
+
+        // Ambil 10 teratas
+        const top10 = scores.slice(0, 10);
+
         leaderboardList.innerHTML = '';
-        if (scores.length === 0) {
+        if (top10.length === 0) {
           leaderboardList.innerHTML = '<div>No heroes yet</div>';
           return;
         }
-        scores.forEach((entry, i) => {
+
+        top10.forEach((entry, i) => {
           const rankColor = i === 0 ? '#FFD700' : (i === 1 ? '#C0C0C0' : (i === 2 ? '#CD7F32' : '#aaa'));
           const timeStr = formatTime(entry.time || 0);
           const div = document.createElement('div');
@@ -500,7 +517,9 @@
 
     function saveScoreToFirebase(name, score, wave, time) {
       if (!name.trim()) return;
-      database.ref('scores').push({
+      // Simpan dengan timestamp sebagai key (unik)
+      const newScoreRef = database.ref('scores').push();
+      newScoreRef.set({
         name: name,
         score: score,
         wave: wave,
@@ -528,7 +547,6 @@
       if (!gamePaused) return;
       gamePaused = false;
       settingsPanel.style.display = 'none';
-      // Sesuaikan waktu mulai agar tidak terpengaruh jeda
       startTime += (Date.now() - pauseTime);
       if (settings.music) startBGM();
       requestAnimationFrame(gameLoop);
@@ -732,7 +750,8 @@
       let text = '';
       if (doubleShot) text += '🔥 Double Shot ';
       if (player?.shield) text += '🛡️ Shield ';
-      document.getElementById('powerUpIndicator')?.remove();
+      const existing = document.getElementById('powerUpIndicator');
+      if (existing) existing.remove();
       if (text) {
         const el = document.createElement('div');
         el.id = 'powerUpIndicator';
@@ -757,7 +776,6 @@
       const remaining = Math.max(0, cooldown - elapsed);
       const percent = 1 - (remaining / cooldown);
 
-      // Hanya tampilkan jika sedang reload
       if (percent < 1) {
         reloadIndicator.innerHTML = `
           <svg width="40" height="40">
