@@ -465,29 +465,27 @@
     }
     function playBossSpawn() { playSound(() => playTone(200, 0.5, 'sawtooth', 0.2)); }
 
-    // === LEADERBOARD (PERBAIKAN UTAMA) ===
+    // === LEADERBOARD (PERBAIKAN: SATU ENTRI PER PEMAIN) ===
     function loadLeaderboard() {
       leaderboardList.innerHTML = '<div>Loading...</div>';
       
-      // Ambil 50 entri terakhir (lebih aman), lalu sort manual
-      const scoresRef = database.ref('scores').limitToLast(50);
+      // Ambil SEMUA data dari /scores
+      const scoresRef = database.ref('scores');
       scoresRef.once('value', (snapshot) => {
         const scores = [];
         snapshot.forEach(child => {
           const val = child.val();
-          // Pastikan data valid
           if (val && typeof val.score === 'number' && val.name) {
             scores.push(val);
           }
         });
 
-        // Sort descending by score, then by time (survival time longer = better)
+        // Sort descending by score, then by time
         scores.sort((a, b) => {
           if (b.score !== a.score) return b.score - a.score;
-          return (b.time || 0) - (a.time || 0); // lebih lama = lebih baik
+          return (b.time || 0) - (a.time || 0);
         });
 
-        // Ambil 10 teratas
         const top10 = scores.slice(0, 10);
 
         leaderboardList.innerHTML = '';
@@ -515,16 +513,24 @@
       });
     }
 
-    function saveScoreToFirebase(name, score, wave, time) {
+    // === SIMPAN SKOR TERBAIK PER PEMAIN ===
+    function saveBestScore(name, score, wave, time) {
       if (!name.trim()) return;
-      // Simpan dengan timestamp sebagai key (unik)
-      const newScoreRef = database.ref('scores').push();
-      newScoreRef.set({
-        name: name,
-        score: score,
-        wave: wave,
-        time: time,
-        timestamp: firebase.database.ServerValue.TIMESTAMP
+      const cleanName = name.trim().replace(/\s+/g, '_').substring(0, 20); // aman untuk key Firebase
+
+      const userRef = database.ref('scores/' + cleanName);
+      userRef.once('value', (snapshot) => {
+        const existing = snapshot.val();
+        if (!existing || score > existing.score) {
+          // Simpan hanya jika skor lebih baik
+          userRef.set({
+            name: name,
+            score: score,
+            wave: wave,
+            time: time,
+            timestamp: firebase.database.ServerValue.TIMESTAMP
+          });
+        }
       });
     }
 
@@ -832,7 +838,7 @@
         highScoreLocalEl.textContent = `High Score: ${highScoreLocal}`;
       }
       
-      saveScoreToFirebase(playerName, score, wave, survivalTime);
+      saveBestScore(playerName, score, wave, survivalTime);
       gameOverScreen.style.display = 'flex';
     }
 
